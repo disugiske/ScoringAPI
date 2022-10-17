@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import abc
-import inspect
 import json
 import sys
 from datetime import datetime
@@ -11,8 +9,6 @@ import hashlib
 import uuid
 from optparse import OptionParser
 from http.server import BaseHTTPRequestHandler, HTTPServer
-
-from exc import RequiedError, ArgJsonError
 from scoring import get_score, get_interests
 
 SALT = "Otus"
