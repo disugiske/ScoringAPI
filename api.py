@@ -4,6 +4,7 @@
 import abc
 import inspect
 import json
+import sys
 from datetime import datetime
 import logging
 import hashlib
@@ -12,6 +13,7 @@ from optparse import OptionParser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from exc import RequiedError, ArgJsonError
+from scoring import get_score, get_interests
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -48,26 +50,21 @@ class Inition():
         self.name = name
 
     def __set__(self, instance, value):
-        self.verify_required(value)
-        result = self.verify(value)
-        print("result:", result)
-        instance.__dict__[self.name] = result
+        if self.verify_required(value):
+            value = self.verify(value)
+            if instance.__class__.__name__ == "OnlineScoreRequest":
+                instance.has.append(self.name)
+        instance.__dict__[self.name] = value
 
     def verify_required(self, arg):
         if self.required and arg is None:
-            print(f'{self.name} field is required!')
             raise ValueError(f'{self.name} field is required!')
-        if not self.nullable and not arg.strip("[]{}""''()"):
-            print(f'{self.name} is not nullable')
+        if not self.nullable and not str(arg).strip("[]{}""''()"):
             raise ValueError(f'{self.name} is not nullable')
-
-
-
-    # def verify_params(self, arg, instance):
-    #     #result = self.verify(arg)
-    #     print('3')
-    #     #setattr(instance, self.name, result)
-    #     return self.verify(arg)
+        if self.nullable and (not str(arg).strip("[]{}""''()") or arg is None):
+            return False
+        else:
+            return True
 
 
 class CharField(Inition):
@@ -92,7 +89,7 @@ class ArgumentsField(Inition):
 class EmailField(Inition):
     @staticmethod
     def verify(arg):
-        if not "@" and "." in arg:
+        if not "@" in arg:
             raise TypeError(f"email: {arg} is not valid email")
         else:
             return arg
@@ -101,9 +98,8 @@ class EmailField(Inition):
 class PhoneField(Inition):
     @staticmethod
     def verify(arg):
-        print("this")
         arg = str(arg)
-        if not arg.isdigit() and len(arg) == 11 and int(arg[:1]) == 7:
+        if not (arg.isdigit() and len(arg) == 11 and arg[:1] == "7"):
             raise TypeError(f"phone: {arg} is not valid phone")
         else:
             return arg
@@ -137,7 +133,7 @@ class BirthDayField(Inition):
 class GenderField(Inition):
     @staticmethod
     def verify(arg):
-        if str(arg).strip("123"):
+        if str(arg).strip("012") or type(arg) != int:
             raise ValueError("gender: not valid")
         else:
             return arg
@@ -146,7 +142,9 @@ class GenderField(Inition):
 class ClientIDsField(Inition):
     @staticmethod
     def verify(arg):
-        if arg != list and arg[0] != int:
+        if type(arg) != list or not str(arg).strip("[]"):
+            raise TypeError(f"client_id: {arg} is not valid")
+        elif len(list(filter(lambda x: type(x) is not int, arg))) > 0:
             raise TypeError(f"client_id: {arg} is not valid")
         else:
             return arg
@@ -169,12 +167,11 @@ class InitRequest(metaclass=Meta):
     # __slots__ = "account", "login", "req"
     def __init__(self, req):
         self.req = req
-        print(self.req)
+        self.has = []
         try:
-            self.responce = self.init_attrs()
+            self.response = self.init_attrs()
         except ValueError as e:
-            self.responce = str(e), 422
-        # self.make_request(req)
+            self.response = str(e), 422
 
     def init_attrs(self):
         try:
@@ -224,29 +221,47 @@ def check_auth(request):
     return False
 
 
+def online_score_method(request, login, context):
+    online_sc = OnlineScoreRequest(req=request["body"]["arguments"])
+    if online_sc.response:
+        return online_sc.response
+    if ((online_sc.phone and online_sc.email) is None) and ((online_sc.first_name and online_sc.last_name) is None) and (
+            (online_sc.gender and online_sc.birthday) is None):
+        return "Not null pairs phone-email, first name-last name,gender-birthday", 422
+    context["has"] = online_sc.has
+    if login == "admin":
+        return {"score": 42}, OK
+    score = get_score(phone=online_sc.phone,
+                      email=online_sc.email,
+                      birthday=online_sc.birthday,
+                      gender=online_sc.gender,
+                      first_name=online_sc.first_name,
+                      last_name=online_sc.last_name,
+                      )
+    return {"score": score}, OK
+
+def interests_request(request, context):
+    interests = {}
+    clients_interests = ClientsInterestsRequest(req=request["body"]["arguments"])
+    if clients_interests.response:
+        return clients_interests.response
+    context["nclients"] = len(clients_interests.client_ids)
+    for i in clients_interests.client_ids:
+        interests[i] = get_interests()
+    return interests, 200
+
 def method_handler(request, ctx, store):
     if request["body"] == {}:
-        print(ERRORS[422], 422)
         return ERRORS[422], 422
     request_method = MethodRequest(req=request["body"])
-    if request_method.responce:
-        print(request_method.responce)
-        return request_method.responce
+    if request_method.response:
+        return request_method.response
     if not check_auth(request_method):
-        print(ERRORS[403], FORBIDDEN)
         return ERRORS[403], FORBIDDEN
     if request["body"]["method"] == "online_score":
-        if request["body"].get("arguments") is None:
-            return ERRORS[422], 422
-        check_arguments = OnlineScoreRequest(req=request["body"]["arguments"])
-        if check_arguments.responce:
-            return check_arguments
+        return online_score_method(request, request_method.login, ctx)
     if request["body"]['method'] == "clients_interests":
-        print("this")
-        clients_interests = ClientsInterestsRequest(req=request["body"])
-        if clients_interests.responce:
-            return clients_interests.responce
-    return "asdasd", OK
+        return interests_request(request, ctx)
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
@@ -262,7 +277,6 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         response, code = {}, OK
         context = {"request_id": self.get_request_id(self.headers)}
         request = None
-        print(request)
         try:
             data_string = self.rfile.read(int(self.headers['Content-Length']))
             request = json.loads(data_string)
@@ -301,6 +315,7 @@ if __name__ == "__main__":
     (opts, args) = op.parse_args()
     logging.basicConfig(filename=opts.log, level=logging.INFO,
                         format='[%(asctime)s] %(levelname).1s %(message)s', datefmt='%Y.%m.%d %H:%M:%S')
+    handler = logging.StreamHandler(stream=sys.stdout)
     server = HTTPServer(("localhost", opts.port), MainHTTPHandler)
     logging.info("Starting server at %s" % opts.port)
     try:
