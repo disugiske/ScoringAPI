@@ -57,10 +57,8 @@ class Inition():
             raise ValueError(f'{self.name} field is required!')
         if not self.nullable and not str(arg).strip("[]{}""''()"):
             raise ValueError(f'{self.name} is not nullable')
-        if self.nullable and (not str(arg).strip("[]{}""''()") or arg is None):
-            return False
-        else:
-            return True
+        return False if self.nullable and (not str(arg).strip("[]{}""''()") or arg is None) else True
+
 
 
 class CharField(Inition):
@@ -112,8 +110,6 @@ class DateField(Inition):
 
 
 class BirthDayField(Inition):
-    ValueError(f"brithday: field is not valid format")
-
     @staticmethod
     def verify(arg):
         try:
