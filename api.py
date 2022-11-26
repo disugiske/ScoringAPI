@@ -9,7 +9,10 @@ import hashlib
 import uuid
 from optparse import OptionParser
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+import scoring
 from scoring import get_score, get_interests
+from store import StoreConnect
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -58,7 +61,6 @@ class Inition():
         if not self.nullable and not str(arg).strip("[]{}""''()"):
             raise ValueError(f'{self.name} is not nullable')
         return False if self.nullable and (not str(arg).strip("[]{}""''()") or arg is None) else True
-
 
 
 class CharField(Inition):
@@ -156,7 +158,6 @@ class Meta(type):
 
 
 class InitRequest(metaclass=Meta):
-    # __slots__ = "account", "login", "req"
     def __init__(self, req):
         self.req = req
         self.has = []
@@ -213,17 +214,19 @@ def check_auth(request):
     return False
 
 
-def online_score_method(request, login, context):
+def online_score_method(request, login, context, store):
     online_sc = OnlineScoreRequest(req=request["body"]["arguments"])
     if online_sc.response:
         return online_sc.response
-    if ((online_sc.phone and online_sc.email) is None) and ((online_sc.first_name and online_sc.last_name) is None) and (
+    if ((online_sc.phone and online_sc.email) is None) and (
+            (online_sc.first_name and online_sc.last_name) is None) and (
             (online_sc.gender and online_sc.birthday) is None):
         return "Not null pairs phone-email, first name-last name,gender-birthday", 422
     context["has"] = online_sc.has
     if login == "admin":
         return {"score": 42}, OK
-    score = get_score(phone=online_sc.phone,
+    score = get_score(store=store,
+                      phone=online_sc.phone,
                       email=online_sc.email,
                       birthday=online_sc.birthday,
                       gender=online_sc.gender,
@@ -232,15 +235,17 @@ def online_score_method(request, login, context):
                       )
     return {"score": score}, OK
 
-def interests_request(request, context):
+
+def interests_request(request, context, store):
     interests = {}
     clients_interests = ClientsInterestsRequest(req=request["body"]["arguments"])
     if clients_interests.response:
         return clients_interests.response
     context["nclients"] = len(clients_interests.client_ids)
     for i in clients_interests.client_ids:
-        interests[i] = get_interests()
+        interests[i] = get_interests(store, clients_interests.client_ids)
     return interests, 200
+
 
 def method_handler(request, ctx, store):
     if request["body"] == {}:
@@ -251,16 +256,16 @@ def method_handler(request, ctx, store):
     if not check_auth(request_method):
         return ERRORS[403], FORBIDDEN
     if request["body"]["method"] == "online_score":
-        return online_score_method(request, request_method.login, ctx)
+        return online_score_method(request, request_method.login, ctx, store)
     if request["body"]['method'] == "clients_interests":
-        return interests_request(request, ctx)
+        return interests_request(request, ctx, store)
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
     router = {
         "method": method_handler
     }
-    store = None
+    store = StoreConnect(host='localhost', port=6379, db=0)
 
     def get_request_id(self, headers):
         return headers.get('HTTP_X_REQUEST_ID', uuid.uuid4().hex)
@@ -280,7 +285,11 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             logging.info("%s: %s %s" % (self.path, data_string, context["request_id"]))
             if path in self.router:
                 try:
-                    response, code = self.router[path]({"body": request, "headers": self.headers}, context, self.store)
+                    response, code = self.router[path](
+                        {"body": request, "headers": self.headers},
+                        context,
+                        self.store
+                    )
                 except Exception as e:
                     logging.exception("Unexpected error: %s" % e)
                     code = INTERNAL_ERROR
@@ -296,7 +305,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             r = {"error": response or ERRORS.get(code, "Unknown Error"), "code": code}
         context.update(r)
         logging.info(context)
-        self.wfile.write(json.dumps(r))
+        self.wfile.write(json.dumps(r).encode())
         return
 
 
@@ -305,9 +314,12 @@ if __name__ == "__main__":
     op.add_option("-p", "--port", action="store", type=int, default=8080)
     op.add_option("-l", "--log", action="store", default=None)
     (opts, args) = op.parse_args()
-    logging.basicConfig(filename=opts.log, level=logging.INFO,
-                        format='[%(asctime)s] %(levelname).1s %(message)s', datefmt='%Y.%m.%d %H:%M:%S')
-    handler = logging.StreamHandler(stream=sys.stdout)
+    logging.basicConfig(level=logging.INFO,
+                        format='[%(asctime)s] %(levelname).1s %(message)s',
+                        datefmt='%Y.%m.%d %H:%M:%S',
+                        stream=sys.stdout
+                        )
+    handler = logging.FileHandler(filename="opts.log", mode="w", encoding="utf-8")
     server = HTTPServer(("localhost", opts.port), MainHTTPHandler)
     logging.info("Starting server at %s" % opts.port)
     try:
