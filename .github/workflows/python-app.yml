@@ -14,7 +14,8 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
-        packages: redis==4.3.5
+    - name: install redis
+      run: python -m pip install redis
     - name: Python Unit Test
       run: python -m unittest test/test_unit.py
     - name: Python Validtion Test
