@@ -3,8 +3,10 @@ import datetime
 import functools
 import unittest
 
-
 import api
+from mock_redis import MockConnect, DeadMockConnect
+from scoring import get_score, get_interests
+from store import StoreConnect
 
 
 def cases(cases):
@@ -13,8 +15,13 @@ def cases(cases):
         def wrapper(*args):
             for c in cases:
                 new_args = args + (c if isinstance(c, tuple) else (c,))
-                f(*new_args)
+                try:
+                    f(*new_args)
+                except AssertionError:
+                    raise AssertionError(f"Error in line {c}")
+
         return wrapper
+
     return decorator
 
 
@@ -22,14 +29,15 @@ class TestSuite(unittest.TestCase):
     def setUp(self):
         self.context = {}
         self.headers = {}
-        self.settings = {}
+        self.store = MockConnect()
 
     def get_response(self, request):
-        return api.method_handler({"body": request, "headers": self.headers}, self.context, self.settings)
+        return api.method_handler({"body": request, "headers": self.headers}, self.context, self.store)
 
     def set_valid_auth(self, request):
         if request.get("login") == api.ADMIN_LOGIN:
-            request["token"] = hashlib.sha512((datetime.datetime.now().strftime("%Y%m%d%H") + api.ADMIN_SALT).encode()).hexdigest()
+            request["token"] = hashlib.sha512(
+                (datetime.datetime.now().strftime("%Y%m%d%H") + api.ADMIN_SALT).encode()).hexdigest()
         else:
             msg = request.get("account", "") + request.get("login", "") + api.SALT
             request["token"] = hashlib.sha512(msg.encode()).hexdigest()
@@ -135,8 +143,28 @@ class TestSuite(unittest.TestCase):
         self.assertEqual(api.OK, code, arguments)
         self.assertEqual(len(arguments["client_ids"]), len(response))
         self.assertTrue(all(v and isinstance(v, list) and all(isinstance(i, str) for i in v)
-                        for v in response.values()))
+                            for v in response.values()))
         self.assertEqual(self.context.get("nclients"), len(arguments["client_ids"]))
+
+
+class TestRedisConnect(unittest.TestCase):
+    def setUp(self):
+        self.store = StoreConnect(host='localhost', port=20, db=0, timeout=0, retry=0)
+        self.phone = ""
+        self.email = ""
+
+    def test_get_score(self):
+        result = get_score(self.store, self.phone, self.email)
+        self.assertTrue(isinstance(result, int))
+
+    def test_get_interests(self):
+        result = get_interests(self.store, 1)
+        self.assertTrue(result)
+
+    def test_set_cache(self):
+        result = self.store.cache_set("name", "value", 60*60)
+        self.assertIsNone(result)
+
 
 
 if __name__ == "__main__":

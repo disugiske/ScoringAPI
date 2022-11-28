@@ -2,15 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import json
-import sys
+from jsonschema import validate
 from datetime import datetime
-import logging
 import hashlib
 import uuid
 from optparse import OptionParser
 from http.server import BaseHTTPRequestHandler, HTTPServer
-
-import scoring
+from logger_config import logger
 from scoring import get_score, get_interests
 from store import StoreConnect
 
@@ -73,7 +71,9 @@ class CharField(Inition):
 
 class ArgumentsField(Inition):
     @staticmethod
-    def verify(arg):
+    def verify(arg: dict):
+        if not isinstance(arg, dict):
+            raise TypeError(f'argument: {arg} is not valid json')
         try:
             dump = json.dumps(arg)
             json.loads(dump)
@@ -179,7 +179,7 @@ class InitRequest(metaclass=Meta):
 
 
 class ClientsInterestsRequest(InitRequest):
-    client_ids = ClientIDsField(required=True, nullable=False)
+    client_ids: list = ClientIDsField(required=True, nullable=False)
     date = DateField(required=False, nullable=True)
 
 
@@ -243,7 +243,7 @@ def interests_request(request, context, store):
         return clients_interests.response
     context["nclients"] = len(clients_interests.client_ids)
     for i in clients_interests.client_ids:
-        interests[i] = get_interests(store, clients_interests.client_ids)
+        interests[i] = get_interests(store, i)
     return interests, 200
 
 
@@ -282,7 +282,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
 
         if request:
             path = self.path.strip("/")
-            logging.info("%s: %s %s" % (self.path, data_string, context["request_id"]))
+            logger.info("%s: %s %s" % (self.path, data_string, context["request_id"]))
             if path in self.router:
                 try:
                     response, code = self.router[path](
@@ -291,7 +291,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
                         self.store
                     )
                 except Exception as e:
-                    logging.exception("Unexpected error: %s" % e)
+                    logger.exception("Unexpected error: %s" % e)
                     code = INTERNAL_ERROR
             else:
                 code = NOT_FOUND
@@ -304,7 +304,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         else:
             r = {"error": response or ERRORS.get(code, "Unknown Error"), "code": code}
         context.update(r)
-        logging.info(context)
+        logger.info(context)
         self.wfile.write(json.dumps(r).encode())
         return
 
@@ -314,14 +314,8 @@ if __name__ == "__main__":
     op.add_option("-p", "--port", action="store", type=int, default=8080)
     op.add_option("-l", "--log", action="store", default=None)
     (opts, args) = op.parse_args()
-    logging.basicConfig(level=logging.INFO,
-                        format='[%(asctime)s] %(levelname).1s %(message)s',
-                        datefmt='%Y.%m.%d %H:%M:%S',
-                        stream=sys.stdout
-                        )
-    handler = logging.FileHandler(filename="opts.log", mode="w", encoding="utf-8")
     server = HTTPServer(("localhost", opts.port), MainHTTPHandler)
-    logging.info("Starting server at %s" % opts.port)
+    logger.info("Starting server at %s" % opts.port)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
