@@ -4,7 +4,7 @@ import functools
 import unittest
 
 import api
-from mock_redis import MockConnect, DeadMockConnect
+from .mock_redis import MockConnect
 from scoring import get_score, get_interests
 from store import StoreConnect
 

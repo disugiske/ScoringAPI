@@ -1,7 +1,6 @@
 import functools
 import unittest
 import api
-from mock_redis import MockConnect
 
 
 def cases(cases):
@@ -106,7 +105,7 @@ class TestBadValidation(unittest.TestCase):
             charfield.verify(arg)
 
     @cases([
-        123, [], {}, ['test@yandex.ru'], 'test.test.ru', "test.ru", "123@test.ru"
+        123, [], {}, ['test@yandex.ru'], 'test.test.ru', "test.ru"
     ])
     def test_bad_emailfield(self, arg):
         email = api.EmailField(required=False, nullable=True)
