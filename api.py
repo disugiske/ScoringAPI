@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import json
-from jsonschema import validate
 from datetime import datetime
 import hashlib
 import uuid
