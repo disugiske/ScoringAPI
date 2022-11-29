@@ -8,5 +8,7 @@ logging.basicConfig(level=logging.INFO,
                     stream=sys.stdout
                     )
 handler = logging.FileHandler(filename="opts.log", mode="w", encoding="utf-8")
-handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname).1s %(message)s"))
+handler.setFormatter(
+    logging.Formatter("[%(asctime)s] %(levelname).1s %(message)s")
+)
 logger.addHandler(handler)

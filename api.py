@@ -57,7 +57,8 @@ class Inition():
             raise ValueError(f'{self.name} field is required!')
         if not self.nullable and not str(arg).strip("[]{}""''()"):
             raise ValueError(f'{self.name} is not nullable')
-        return False if self.nullable and (not str(arg).strip("[]{}""''()") or arg is None) else True
+        return False if self.nullable and \
+            (not str(arg).strip("[]{}""''()") or arg is None) else True
 
 
 class CharField(Inition):
@@ -84,7 +85,7 @@ class ArgumentsField(Inition):
 class EmailField(Inition):
     @staticmethod
     def verify(arg):
-        if not "@" in arg:
+        if "@" not in arg:
             raise TypeError(f"email: {arg} is not valid email")
         else:
             return arg
@@ -118,7 +119,7 @@ class BirthDayField(Inition):
         except ValueError:
             raise ValueError(f"brithday: field {arg} is not valid format")
         if not delta.days / 365 < 70:
-            raise ValueError(f"brithday: age > 70 years")
+            raise ValueError("brithday: age > 70 years")
         else:
             return arg
 
@@ -205,9 +206,13 @@ class MethodRequest(InitRequest):
 
 def check_auth(request):
     if request.is_admin:
-        digest = hashlib.sha512((datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).encode()).hexdigest()
+        digest = hashlib.sha512(
+            (datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).encode()
+        ).hexdigest()
     else:
-        digest = hashlib.sha512((request.account + request.login + SALT).encode()).hexdigest()
+        digest = hashlib.sha512(
+            (request.account + request.login + SALT).encode()
+        ).hexdigest()
     if digest == request.token:
         return True
     return False
@@ -220,7 +225,8 @@ def online_score_method(request, login, context, store):
     if ((online_sc.phone and online_sc.email) is None) and (
             (online_sc.first_name and online_sc.last_name) is None) and (
             (online_sc.gender and online_sc.birthday) is None):
-        return "Not null pairs phone-email, first name-last name,gender-birthday", 422
+        return "Not null pairs phone-email," \
+               " first name-last name,gender-birthday", 422
     context["has"] = online_sc.has
     if login == "admin":
         return {"score": 42}, OK
@@ -237,7 +243,9 @@ def online_score_method(request, login, context, store):
 
 def interests_request(request, context, store):
     interests = {}
-    clients_interests = ClientsInterestsRequest(req=request["body"]["arguments"])
+    clients_interests = ClientsInterestsRequest(
+        req=request["body"]["arguments"]
+    )
     if clients_interests.response:
         return clients_interests.response
     context["nclients"] = len(clients_interests.client_ids)
@@ -276,12 +284,15 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         try:
             data_string = self.rfile.read(int(self.headers['Content-Length']))
             request = json.loads(data_string)
-        except:
+        except Exception as e:
+            logger.exception('Error, bad request', e)
             code = BAD_REQUEST
 
         if request:
             path = self.path.strip("/")
-            logger.info("%s: %s %s" % (self.path, data_string, context["request_id"]))
+            logger.info(
+                "%s: %s %s" % (self.path, data_string, context["request_id"])
+            )
             if path in self.router:
                 try:
                     response, code = self.router[path](
@@ -301,7 +312,10 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         if code not in ERRORS:
             r = {"response": response, "code": code}
         else:
-            r = {"error": response or ERRORS.get(code, "Unknown Error"), "code": code}
+            r = {
+                "error": response or ERRORS.get(code, "Unknown Error"),
+                "code": code
+            }
         context.update(r)
         logger.info(context)
         self.wfile.write(json.dumps(r).encode())

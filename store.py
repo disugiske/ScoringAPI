@@ -27,7 +27,10 @@ class StoreConnect:
                            db,
                            decode_responses=True,
                            retry_on_error=exceptions,
-                           retry=Retry(backoff=ConstantBackoff(self.timeout), retries=self.retry)
+                           retry=Retry(
+                               backoff=ConstantBackoff(self.timeout),
+                               retries=self.retry
+                           )
                            )
 
     def cache_get(self, name):

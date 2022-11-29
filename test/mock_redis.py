@@ -3,10 +3,12 @@ import random
 
 
 class MockConnect:
-    def cache_get(self, name):
-            return random.randrange(1, 5, 1)
+    @staticmethod
+    def cache_get(name):
+        return random.randrange(1, 5, 1)
 
-    def get(self, name):
+    @staticmethod
+    def get(name):
         interests = [
             "cars",
             "pets",
@@ -22,5 +24,6 @@ class MockConnect:
         ]
         return json.dumps(random.sample(interests, 3))
 
-    def cache_set(self, name, value, expire):
+    @staticmethod
+    def cache_set(name, value, expire):
         pass

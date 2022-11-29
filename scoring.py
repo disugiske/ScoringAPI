@@ -3,12 +3,15 @@ import json
 from datetime import datetime
 
 
-def get_score(store, phone, email, birthday=None, gender=None, first_name=None, last_name=None):
+def get_score(store, phone, email, birthday=None,
+              gender=None, first_name=None, last_name=None):
     key_parts = [
         first_name or "",
         last_name or "",
         phone or "",
-        str(datetime.strptime(birthday, '%d.%m.%Y')) if birthday is not None else "",
+        str(
+            datetime.strptime(birthday, '%d.%m.%Y')
+        ) if birthday is not None else "",
     ]
     key = "uid:" + hashlib.md5("".join(key_parts).encode()).hexdigest()
     # try get from cache,

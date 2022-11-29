@@ -4,7 +4,7 @@ import functools
 import unittest
 
 import api
-from .mock_redis import MockConnect
+from test.mock_redis import MockConnect
 from scoring import get_score, get_interests
 from store import StoreConnect
 
@@ -32,7 +32,9 @@ class TestSuite(unittest.TestCase):
         self.store = MockConnect()
 
     def get_response(self, request):
-        return api.method_handler({"body": request, "headers": self.headers}, self.context, self.store)
+        return api.method_handler(
+            {"body": request, "headers": self.headers},
+            self.context, self.store)
 
     def set_valid_auth(self, request):
         if request.get("login") == api.ADMIN_LOGIN:
@@ -162,9 +164,8 @@ class TestRedisConnect(unittest.TestCase):
         self.assertTrue(result)
 
     def test_set_cache(self):
-        result = self.store.cache_set("name", "value", 60*60)
+        result = self.store.cache_set("name", "value", 60 * 60)
         self.assertIsNone(result)
-
 
 
 if __name__ == "__main__":
